@@ -1,0 +1,104 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전략 보드게임 — 헥사곤</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="header">
+  <h1>⚔ 전략 보드게임 — 헥사곤</h1>
+  <div id="turn-info">턴 <span id="turn-num">1</span> / 40 &nbsp;|&nbsp; <span id="phase-label">전장 생성</span></div>
+</div>
+<div id="main">
+  <!-- LEFT -->
+  <div id="left-panel">
+    <div class="panel-section">
+      <h3>행동 토큰</h3>
+      <div id="token-display">
+        <div><div class="token-count" id="token-val">10</div><div class="token-label">남은 토큰</div></div>
+        <div style="font-size:22px;margin-left:4px">🪙</div>
+      </div>
+      <div class="piggy-bank">저금통: <span id="piggy-val">0</span>/20개</div>
+      <div style="font-size:9px;color:var(--text3);margin-top:3px">미사용 토큰 → 자동 저축</div>
+    </div>
+    <div id="obs-status" style="display:none">
+      <h3>장애물 배치</h3>
+      <div class="obs-turn-row">
+        <span class="obs-turn-label">현재 턴</span>
+        <span class="obs-turn-val" id="obs-turn-label">—</span>
+      </div>
+      <div class="obs-turn-row">
+        <span class="obs-turn-label">단계</span>
+        <span class="obs-turn-val" id="obs-phase-label">산 배치</span>
+      </div>
+      <div class="obs-count-row">
+        <div class="obs-count-item">⛰️ 산: <span id="mtn-count">5</span></div>
+        <div class="obs-count-item">🌊 강: <span id="river-count">5</span></div>
+      </div>
+      <div class="obs-rules" id="obs-rules-text">규칙 표시</div>
+    </div>
+    <div id="reserve-panel" style="display:none">
+      <h3>📌 이동 예약</h3>
+      <div id="reserve-list"><div style="font-size:9px;color:var(--text3)">예약 없음</div></div>
+    </div>
+    <div class="panel-section" style="display:flex;align-items:center;justify-content:space-between">
+      <h3 style="margin-bottom:0">패</h3>
+      <span style="font-size:9px;color:var(--text3);font-family:monospace" id="deck-count">덱 0장</span>
+    </div>
+    <div id="hand-area" style="padding:7px"></div>
+  </div>
+  <!-- CENTER -->
+  <div id="center">
+    <div id="score-bar">
+      <span style="color:var(--text2)">내 기물</span>
+      <span class="score-val-p" id="p-count">0</span>
+      <span style="color:var(--text3)">vs</span>
+      <span class="score-val-e" id="e-count">0</span>
+      <span style="color:var(--text2)">AI 기물</span>
+      <span style="margin-left:auto;display:flex;gap:12px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;">
+        <span style="color:#3a9a3a">👑 내 킹 <span id="p-base-hp" style="color:#5aba5a">200</span>HP</span>
+        <span style="color:var(--red2)">👑 적 킹 <span id="e-base-hp" style="color:var(--red2)">200</span>HP</span>
+      </span>
+    </div>
+    <div id="board-wrapper"><svg id="hex-svg"></svg></div>
+    <div id="phase-banner"><span id="phase-text">전장 생성 준비 중...</span></div>
+    <div id="log-bar"></div>
+  </div>
+  <!-- RIGHT -->
+  <div id="right-panel">
+    <div id="unit-info">
+      <div style="color:var(--text3);font-size:10px;padding:4px">헥스를 클릭하면<br>정보가 표시됩니다</div>
+    </div>
+    <div id="action-hint"></div>
+    <div id="action-area">
+      <button class="action-btn primary" id="btn-end-turn" onclick="endTurn()" style="display:none">배치 완료</button>
+      <button class="action-btn skip-btn" id="btn-skip-obs" onclick="skipObsTurn()" style="display:none">이번 턴 건너뛰기</button>
+      <button class="action-btn reserve-btn" id="btn-reserve" onclick="startReserveMode()" style="display:none">📌 이동 예약</button>
+      <button class="action-btn cancel-btn" id="btn-cancel" onclick="cancelSelection()" style="display:none">선택 취소 (ESC)</button>
+      <button class="action-btn" id="btn-install-wall" onclick="startWallMode()" style="display:none">벽 설치 (토큰 2)</button>
+      <button class="action-btn" id="btn-install-bridge" onclick="startBridgeMode()" style="display:none">다리 설치 (토큰 2)</button>
+      <button class="action-btn" id="btn-install-tower" onclick="startTowerMode()" style="display:none">감시탑 건설 (토큰 3)</button>
+    </div>
+  </div>
+</div>
+
+<!-- General modal -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h2 id="modal-title">안내</h2>
+    <p id="modal-body"></p>
+    <button onclick="closeModal()">확인</button>
+  </div>
+</div>
+<div id="hex-tooltip"></div>
+
+<script src="js/01-core.js"></script>
+<script src="js/02-state.js"></script>
+<script src="js/03-render-ui.js"></script>
+<script src="js/04-obstacles.js"></script>
+<script src="js/05-player-actions.js"></script>
+<script src="js/06-ai-turns-endgame.js"></script>
+</body>
+</html>
