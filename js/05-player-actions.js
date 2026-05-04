@@ -83,6 +83,16 @@ function buildingName(type){
   return type==='wall'?'벽':type==='bridge'?'다리':'감시탑';
 }
 
+function buildingCost(type){
+  return type==='tower'?3:2;
+}
+
+function buildingBuildTurns(type){
+  if(type==='wall')return 1;
+  if(type==='bridge')return 3;
+  return 2;
+}
+
 function showRangedTargets(q,r,unit){
   const vis=new Set([`${q},${r}`]),front=[{q,r,d:0}];
   while(front.length>0){
@@ -140,6 +150,7 @@ function reserveMoveAttackTo(tq,tr){
   const unit=grid[ri(sq,sr)].unit,target=grid[ri(tq,tr)].unit;
   if(!unit||!target||target.owner===unit.owner)return false;
   if(unit.attackedThisTurn||unit.range<=0){log('공격 예약 불가','system');return true;}
+  if(unit.movedThisTurn){log('이미 이동한 기물은 이동 후 공격 예약을 할 수 없습니다','system');return true;}
   if(!visibleHexes.has(`${tq},${tr}`)){log('시야 밖 대상은 공격 예약할 수 없습니다','system');return true;}
   const stand=findAttackStandSpot(sq,sr,tq,tr,unit);
   if(!stand){log('이번 턴 이동 후 공격 가능한 위치가 없습니다','system');return true;}
@@ -147,6 +158,22 @@ function reserveMoveAttackTo(tq,tr){
   if(!reservations[key])playerReservationQueue.push(key);
   reservations[key]={type:'moveAttack',tq:stand.q,tr:stand.r,owner:'p',attackQ:tq,attackR:tr,seq:reservations[key]?.seq??reservationSeq++};
   log(`📌 공격 예약: ${unit.name} → (${stand.q},${stand.r}) 이동 후 (${tq},${tr}) 공격`,'reserve');
+  cancelSelection();refreshAll();return true;
+}
+
+function reserveAttackTo(tq,tr){
+  if(!selectedUnit)return false;
+  const{q:sq,r:sr}=selectedUnit;
+  const unit=grid[ri(sq,sr)].unit,target=grid[ri(tq,tr)].unit;
+  if(!unit||!target||target.owner===unit.owner)return false;
+  if(unit.attackedThisTurn||unit.range<=0){log('공격 예약 불가','system');return true;}
+  if(!visibleHexes.has(`${tq},${tr}`)){log('시야 밖 대상은 공격 예약할 수 없습니다','system');return true;}
+  if(hexDist(sq,sr,tq,tr)>unit.range){return reserveMoveAttackTo(tq,tr);}
+  if(isRangedMountainBlocked(unit,sq,sr,tq,tr)){log('산이 사선을 막아 공격 예약할 수 없습니다','system');return true;}
+  const key=`${sq},${sr}`;
+  if(!reservations[key])playerReservationQueue.push(key);
+  reservations[key]={type:'attack',tq:sq,tr:sr,owner:'p',attackQ:tq,attackR:tr,seq:reservations[key]?.seq??reservationSeq++};
+  log(`📌 공격 예약: ${unit.name} → (${tq},${tr})`,'reserve');
   cancelSelection();refreshAll();return true;
 }
 
@@ -230,7 +257,7 @@ function onHexClick(q,r){
   if(mode==='move'&&selectedUnit){
     if(cell.unit&&cell.unit.owner==='e'){
       const{q:sq,r:sr}=selectedUnit,unit=grid[ri(sq,sr)].unit;
-      if(unit&&hexDist(sq,sr,q,r)<=unit.range&&!unit.attackedThisTurn&&!isRangedMountainBlocked(unit,sq,sr,q,r))doAttack(sq,sr,q,r);
+      if(unit&&hexDist(sq,sr,q,r)<=unit.range&&!unit.attackedThisTurn&&!isRangedMountainBlocked(unit,sq,sr,q,r))reserveAttackTo(q,r);
       else if(unit&&!unit.attackedThisTurn)reserveMoveAttackTo(q,r);
       else log('사거리 초과 또는 이미 공격함','system');
       return;
@@ -258,7 +285,7 @@ function onHexClick(q,r){
     reserveMoveTo(q,r);return;
   }
   if(mode==='attack'&&selectedUnit){
-    if(cell.unit&&cell.unit.owner==='e')doAttack(selectedUnit.q,selectedUnit.r,q,r);
+    if(cell.unit&&cell.unit.owner==='e')reserveAttackTo(q,r);
     else if(cell.tower&&cell.tower.owner==='e')doAttackTower(selectedUnit.q,selectedUnit.r,q,r);
     else if(cell.bridge)doAttackBridge(selectedUnit.q,selectedUnit.r,q,r);
     else cancelSelection();
@@ -457,11 +484,7 @@ function doInstallWall(q,r){
   if(engineer.builtThisTurn){log('공병은 1턴에 건축물을 1개만 건설할 수 있습니다','system');return;}
   if(!isValidWallTarget(q,r)){log('해당 위치에 설치 불가','system');return;}
   if(!hexNeighbours(eq,er).some(n=>n.q===q&&n.r===r)){queueConstruction('wall',eq,er,q,r);return;}
-  const c=grid[ri(q,r)];
-  c.wall={owner:'p',hp:200};spendTokens(2);
-  engineer.builtThisTurn=true;
-  log(`🪵 건축물 건설: 벽 (${q},${r}) HP200`,'player');
-  cancelSelection();updateHUD();refreshAll();
+  startBuildingConstruction('wall','p',eq,er,q,r);
 }
 
 function doInstallBridge(q,r){
@@ -472,12 +495,7 @@ function doInstallBridge(q,r){
   if(engineer.builtThisTurn){log('공병은 1턴에 건축물을 1개만 건설할 수 있습니다','system');return;}
   if(!isValidBridgeTarget(q,r)){log('해당 위치에 설치 불가','system');return;}
   if(!hexNeighbours(eq,er).some(n=>n.q===q&&n.r===r)){queueConstruction('bridge',eq,er,q,r);return;}
-  const c=grid[ri(q,r)];
-  c.bridge={hp:200};spendTokens(2);
-  if(c.unit)c.unit.waitTurns=0;
-  engineer.builtThisTurn=true;
-  log(`🌉 건축물 건설: 다리 (${q},${r}) HP200`,'player');
-  cancelSelection();updateHUD();refreshAll();
+  startBuildingConstruction('bridge','p',eq,er,q,r);
 }
 
 function doInstallTower(q,r){
@@ -506,6 +524,12 @@ function isValidTowerTarget(q,r){
   return !c.terrain&&!c.wall&&!c.bridge&&!c.tower&&!c.unit;
 }
 
+function isValidBuildingTarget(type,q,r){
+  if(type==='wall')return isValidWallTarget(q,r);
+  if(type==='bridge')return isValidBridgeTarget(q,r);
+  return isValidTowerTarget(q,r);
+}
+
 function queueConstruction(type,eq,er,tq,tr){
   const stand=findConstructionStandSpot(eq,er,tq,tr);
   if(!stand){log('해당 위치 근처로 이동할 경로가 없습니다','system');return;}
@@ -513,21 +537,28 @@ function queueConstruction(type,eq,er,tq,tr){
   if(!reservations[key])playerReservationQueue.push(key);
   reservations[key]={tq:stand.q,tr:stand.r,owner:'p',seq:reservations[key]?.seq??reservationSeq++};
   pendingBuildings=pendingBuildings.filter(c=>!(c.owner==='p'&&c.eq===eq&&c.er===er));
-  pendingBuildings.push({type,owner:'p',eq:stand.q,er:stand.r,tq,tr,readyTurn:turn+1});
+  pendingBuildings.push({type,owner:'p',eq:stand.q,er:stand.r,tq,tr,readyTurn:turn+1,started:false});
   log(`📌 건축물 자동 건설 예약: ${buildingName(type)} (${tq},${tr})`,'reserve');
   cancelSelection();refreshAll();
 }
 
 function queueAdjacentTower(eq,er,tq,tr){
+  startBuildingConstruction('tower','p',eq,er,tq,tr);
+}
+
+function startBuildingConstruction(type,owner,eq,er,tq,tr){
   const engineer=grid[ri(eq,er)].unit;
-  if(availableTokens()<3){log('감시탑 건설: 토큰 3개 필요','system');return;}
-  spendTokens(3);
+  const cost=buildingCost(type),buildTurns=buildingBuildTurns(type);
+  if(availableTokens()<cost){log(`${buildingName(type)} 건설: 토큰 ${cost}개 필요`,'system');return false;}
+  spendTokens(cost);
   engineer.builtThisTurn=true;
-  engineer.waitTurns=Math.max(engineer.waitTurns||0,2);
-  pendingBuildings=pendingBuildings.filter(c=>!(c.owner==='p'&&c.eq===eq&&c.er===er));
-  pendingBuildings.push({type:'tower',owner:'p',eq,er,tq,tr,started:true,completeTurn:turn+2,readyTurn:turn});
-  log(`🗼 감시탑 건설 시작: (${tq},${tr}) — 공병 2턴 이동 불가`,'player');
+  if(type==='tower')engineer.waitTurns=Math.max(engineer.waitTurns||0,2);
+  pendingBuildings=pendingBuildings.filter(c=>!(c.owner===owner&&c.eq===eq&&c.er===er));
+  pendingBuildings.push({type,owner,eq,er,tq,tr,started:true,completeTurn:turn+buildTurns,readyTurn:turn});
+  const waitText=type==='tower'?' — 공병 2턴 이동 불가':'';
+  log(`${type==='wall'?'🪵':type==='bridge'?'🌉':'🗼'} ${buildingName(type)} 건설 시작: (${tq},${tr}) — ${buildTurns}턴 후 완공${waitText}`,owner==='p'?'player':'enemy');
   cancelSelection();updateHUD();refreshAll();
+  return true;
 }
 
 function findConstructionStandSpot(eq,er,tq,tr){
@@ -555,40 +586,35 @@ async function processAutoBuildings(){
     const engineer=grid[ri(c.eq,c.er)].unit;
     if(!engineer||engineer.owner!==c.owner||engineer.name!=='공병'){remaining.push(c);continue;}
     if(!hexNeighbours(c.eq,c.er).some(n=>n.q===c.tq&&n.r===c.tr)){remaining.push(c);continue;}
-    if(c.type==='tower'){
-      if(!c.started){
-        if(engineer.builtThisTurn){remaining.push(c);continue;}
-        if(!isValidTowerTarget(c.tq,c.tr))continue;
-        if(availableTokens()<3){log('감시탑 자동 건설 토큰 부족 — 다음 턴에 다시 시도','system');remaining.push(c);continue;}
-        spendTokens(3);
-        engineer.builtThisTurn=true;
-        engineer.waitTurns=Math.max(engineer.waitTurns||0,2);
-        remaining.push({...c,started:true,completeTurn:turn+2});
-        log(`🗼 예약 감시탑 건설 시작: (${c.tq},${c.tr}) — 공병 2턴 이동 불가`,c.owner==='p'?'player':'enemy');
-        await delay(120);
-        continue;
-      }
-      if(c.completeTurn>turn){remaining.push(c);continue;}
-      if(!isValidTowerTarget(c.tq,c.tr))continue;
-      grid[ri(c.tq,c.tr)].tower={owner:c.owner,hp:50,maxHp:50,sight:5};
-      log(`🗼 감시탑 완공: (${c.tq},${c.tr}) HP50 탐색5`,c.owner==='p'?'player':'enemy');
+    if(!c.started){
+      if(engineer.builtThisTurn){remaining.push(c);continue;}
+      if(!isValidBuildingTarget(c.type,c.tq,c.tr))continue;
+      const cost=buildingCost(c.type),buildTurns=buildingBuildTurns(c.type);
+      if(availableTokens()<cost){log(`${buildingName(c.type)} 자동 건설 토큰 부족 — 다음 턴에 다시 시도`,'system');remaining.push(c);continue;}
+      spendTokens(cost);
+      engineer.builtThisTurn=true;
+      if(c.type==='tower')engineer.waitTurns=Math.max(engineer.waitTurns||0,2);
+      remaining.push({...c,started:true,completeTurn:turn+buildTurns});
+      const waitText=c.type==='tower'?' — 공병 2턴 이동 불가':'';
+      log(`${buildingName(c.type)} 예약 건설 시작: (${c.tq},${c.tr}) — ${buildTurns}턴 후 완공${waitText}`,c.owner==='p'?'player':'enemy');
       await delay(120);
       continue;
     }
-    if(engineer.builtThisTurn){remaining.push(c);continue;}
-    if(availableTokens()<2){log('건축물 자동 건설 토큰 부족 — 다음 턴에 다시 시도','system');remaining.push(c);continue;}
+    if(c.completeTurn>turn){remaining.push(c);continue;}
     if(c.type==='wall'){
       if(!isValidWallTarget(c.tq,c.tr))continue;
       grid[ri(c.tq,c.tr)].wall={owner:c.owner,hp:200};
-      spendTokens(2);engineer.builtThisTurn=true;
-      log(`🪵 예약 건축물 자동 건설: 벽 (${c.tq},${c.tr}) HP200`,c.owner==='p'?'player':'enemy');
-    } else {
+      log(`🪵 벽 완공: (${c.tq},${c.tr}) HP200`,c.owner==='p'?'player':'enemy');
+    } else if(c.type==='bridge'){
       if(!isValidBridgeTarget(c.tq,c.tr))continue;
       const target=grid[ri(c.tq,c.tr)];
       target.bridge={hp:200};
       if(target.unit)target.unit.waitTurns=0;
-      spendTokens(2);engineer.builtThisTurn=true;
-      log(`🌉 예약 건축물 자동 건설: 다리 (${c.tq},${c.tr}) HP200`,c.owner==='p'?'player':'enemy');
+      log(`🌉 다리 완공: (${c.tq},${c.tr}) HP200`,c.owner==='p'?'player':'enemy');
+    } else {
+      if(!isValidTowerTarget(c.tq,c.tr))continue;
+      grid[ri(c.tq,c.tr)].tower={owner:c.owner,hp:50,maxHp:50,sight:5};
+      log(`🗼 감시탑 완공: (${c.tq},${c.tr}) HP50 탐색5`,c.owner==='p'?'player':'enemy');
     }
     await delay(120);
   }
@@ -632,7 +658,7 @@ async function stepReservation(key){
   const unit=grid[ri(sq,sr)].unit;
   if(!unit||unit.owner!==res.owner){delete reservations[key];return false;}
   if(unit.waitTurns>0)return false;
-  if(res.type==='moveAttack'&&canExecuteReservedAttack(unit,sq,sr,res)){
+  if((res.type==='attack'||res.type==='moveAttack')&&canExecuteReservedAttack(unit,sq,sr,res)){
     await executeReservedAttack(unit,sq,sr,res);
     delete reservations[key];
     return true;
