@@ -139,7 +139,7 @@ function refreshHex(q,r){
   if(q===PLAYER_START.q&&r===PLAYER_START.r)cls+=' sp';
   else if(q===ENEMY_START.q&&r===ENEMY_START.r)cls+=' se';
   // FIX 1: unit border color by owner
-  if(cell.unit){
+  if(cell.unit&&visible){
     cls+=(cell.unit.owner==='p')?' unit-p':' unit-e';
   }
   if(highlighted.has(key))cls+=' hl';

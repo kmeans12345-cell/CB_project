@@ -42,6 +42,18 @@ function cubeToOffset(x,y,z){
 function moveCost(cell){
   return cell.terrain==='river'&&!cell.bridge?2:1;
 }
+function shieldZoneCost(q,r,owner){
+  if(!owner)return 0;
+  return hexNeighbours(q,r).some(n=>{
+    const key=`${n.q},${n.r}`;
+    const unit=grid[ri(n.q,n.r)].unit;
+    if(!unit||unit.name!=='방패병'||unit.owner===owner)return false;
+    return owner==='e'||visibleHexes.has(key);
+  })?1:0;
+}
+function moveCostAt(q,r,owner){
+  return moveCost(grid[ri(q,r)])+shieldZoneCost(q,r,owner);
+}
 function unitSight(unit){
   if(!unit)return 0;
   return unit.sight??UNIT_DEFS[unit.name]?.sight??1;
@@ -68,7 +80,7 @@ function hexReachable(q,r,steps,owner){
       if(cell.terrain==='mountain')continue;
       if(cell.wall&&cell.wall.owner===owner)continue;
       if(cell.unit&&cell.unit.owner!==owner&&visibleHexes.has(key))continue; // 시야 내 적 기물만 통과 불가 (안개 속 적은 인식 불가)
-      const mc=moveCost(cell),nc=cur.cost+mc;
+      const mc=moveCostAt(nb.q,nb.r,owner),nc=cur.cost+mc;
       if(nc>steps)continue;
       vis.set(key,nc);front.push({q:nb.q,r:nb.r,cost:nc});
       if(!cell.unit)result.push({q:nb.q,r:nb.r}); // 아군 기물 칸은 통과만 가능, 정지 불가
@@ -91,7 +103,8 @@ function bfsPathHex(sq,sr,tq,tr,owner){
       if(cell.terrain==='mountain'||cell.wall)continue;
       if(cell.unit&&cell.unit.owner!==owner&&!isTarget&&visibleHexes.has(key))continue; // 시야 내 적만 장애물, 안개 속 적은 인식 불가
       const riverPenalty=cell.terrain==='river'&&!cell.bridge?100:0;
-      const nextScore=score+1+riverPenalty;
+      const shieldPenalty=shieldZoneCost(nb.q,nb.r,owner);
+      const nextScore=score+1+riverPenalty+shieldPenalty;
       if(best.has(key)&&best.get(key)<=nextScore)continue;
       best.set(key,nextScore);
       const np=[...path,{q:nb.q,r:nb.r}];
@@ -127,17 +140,17 @@ function enemyZone(q,r) {return !playerZone(q,r);}
 
 // FIX 4: atk, def, and hp ×10 from original values
 const UNIT_DEFS={
-  보병:    {cost:1,atk:30, def:10,hp:50, move:1,range:1,sight:1,emoji:'⚔️',special:'1칸 내 적 공격'},
-  궁병:    {cost:1,atk:20, def:10,hp:40, move:2,range:2,sight:2,emoji:'🏹',special:'2칸 이동, 2칸 사거리 공격'},
-  방패병:  {cost:1,atk:0,  def:10,hp:60, move:1,range:0,sight:1,emoji:'🛡️',special:'위치한 칸 봉쇄'},
-  창병:    {cost:2,atk:30, def:10,hp:50, move:1,range:1,sight:1,emoji:'🔱',special:'기마병에 +20 피해'},
-  공병:    {cost:1,atk:10, def:10,hp:10, move:1,range:1,sight:1,emoji:'🔨',special:'건축물 건설(벽/다리/감시탑)'},
-  포병:    {cost:4,atk:50, def:10,hp:40, move:1,range:2,sight:2,emoji:'💣',special:'2칸 광역 중심50/주변10'},
-  기마병:  {cost:3,atk:30, def:10,hp:60, move:3,range:1,sight:1,emoji:'🐴',special:'이동력 3칸'},
-  트레뷰셋:{cost:6,atk:50, def:0,hp:60, move:1,range:3,sight:2,emoji:'⚙️',special:'3칸, 건축물 2배 피해'},
-  기사:    {cost:5,atk:50, def:30,hp:60, move:3,range:1,sight:1,emoji:'♞',special:'방어 30, 이동 3'},
-  마법사:  {cost:5,atk:40, def:10,hp:40, move:1,range:2,sight:2,emoji:'🔮',special:'2칸+인접 스플래시 20'},
-  힐러:    {cost:3,atk:0,  def:10,hp:40, move:1,range:2,sight:2,emoji:'⚕️',special:'2칸 내 아군 1기 HP +30 회복, 공격 불가'},
+  보병:    {cost:1,atk:30, def:10,hp:50, move:2,range:1,sight:1,emoji:'⚔️',special:'2칸 이동, 1칸 내 적 공격'},
+  궁병:    {cost:1,atk:20, def:10,hp:40, move:3,range:2,sight:2,emoji:'🏹',special:'3칸 이동, 2칸 사거리 공격'},
+  방패병:  {cost:1,atk:0,  def:10,hp:60, move:2,range:0,sight:1,emoji:'🛡️',special:'2칸 이동, 위치한 칸 봉쇄'},
+  창병:    {cost:2,atk:30, def:10,hp:50, move:2,range:1,sight:1,emoji:'🔱',special:'2칸 이동, 기마병에 +20 피해'},
+  공병:    {cost:1,atk:10, def:10,hp:10, move:2,range:1,sight:1,emoji:'🔨',special:'2칸 이동, 건축물 건설(벽/다리/감시탑)'},
+  포병:    {cost:4,atk:50, def:10,hp:40, move:2,range:2,sight:2,emoji:'💣',special:'2칸 이동, 2칸 광역 중심50/주변10'},
+  기마병:  {cost:3,atk:30, def:10,hp:60, move:4,range:1,sight:1,emoji:'🐴',special:'이동력 4칸'},
+  트레뷰셋:{cost:6,atk:50, def:0,hp:60, move:2,range:3,sight:2,emoji:'⚙️',special:'2칸 이동, 3칸 사거리, 건축물 2배 피해'},
+  기사:    {cost:5,atk:50, def:30,hp:60, move:4,range:1,sight:1,emoji:'♞',special:'방어 30, 이동 4'},
+  마법사:  {cost:5,atk:40, def:10,hp:40, move:2,range:2,sight:2,emoji:'🔮',special:'2칸 이동, 2칸+인접 스플래시 20'},
+  힐러:    {cost:3,atk:0,  def:10,hp:40, move:2,range:2,sight:2,emoji:'⚕️',special:'2칸 이동, 2칸 내 아군 1기 HP +30 회복, 공격 불가'},
   킹:      {cost:0,atk:0,  def:10,hp:200,move:0,range:0,sight:1,emoji:'👑',special:'진영 핵심 기물, 이동 불가'},
 };
 const BASE_HP=200;

@@ -31,6 +31,12 @@ function selectCard(card){
 
 function selectPlayerUnit(q,r){
   const unit=grid[ri(q,r)].unit;if(!unit||unit.owner!=='p')return;
+  if(unit.name==='킹'){
+    cancelSelection();
+    showUnitInfo(UNIT_DEFS[unit.name],unit.name,unit,q,r);
+    setHint('아군 킹은 선택할 수 없습니다');
+    return;
+  }
   if(selectedUnit&&selectedUnit.q===q&&selectedUnit.r===r){cancelSelection();return;}
   selectedUnit={q,r};selectedCard=null;
   clearHighlights();
@@ -39,7 +45,7 @@ function selectPlayerUnit(q,r){
   document.getElementById('btn-reserve').style.display='block';
   const isBuildingEngineer=unit.name==='공병'&&engineerIsBuilding(q,r);
   const isHealer=unit.name==='힐러';
-  const canMove=!isBuildingEngineer&&!unit.movedThisTurn&&unit.waitTurns===0&&availableTokens()>0;
+  const canMove=!isBuildingEngineer&&!unit.movedThisTurn&&unit.waitTurns===0&&availableMoveTokens(unit.owner)>0;
   const canHeal=isHealer&&!unit.attackedThisTurn&&unit.waitTurns===0;
   const canAtk=!isHealer&&!unit.attackedThisTurn&&unit.waitTurns===0&&unit.range>0;
   if(canMove){
@@ -67,7 +73,7 @@ function selectPlayerUnit(q,r){
     if(unit.waitTurns>0)r2.push(`강 대기 ${unit.waitTurns}턴`);
     if(unit.movedThisTurn)r2.push('이동 완료');
     if(unit.attackedThisTurn)r2.push('회복/공격 완료');
-    if(availableTokens()<=0)r2.push('토큰 없음');
+    if(availableMoveTokens(unit.owner)<=0)r2.push('동작 토큰 없음');
     setHint(`${unit.name} — ${r2.join(', ')}`);
   }
   if(unit.name==='공병'&&availableTokens()>=2&&!unit.movedThisTurn&&!unit.builtThisTurn&&!isBuildingEngineer){
@@ -85,6 +91,11 @@ function canAttackBridge(unit){
 
 function canAttackTower(unit){
   return unit&&unit.range>0;
+}
+
+function confirmStackedAttack(kind){
+  const label=kind==='tower'?'감시탑':'다리';
+  return confirm(`이 칸에는 기물과 ${label}가 함께 있습니다.\n확인: 기물 공격\n취소: ${label} 공격`);
 }
 
 function buildingName(type){
@@ -189,8 +200,8 @@ function reserveAttackTo(tq,tr){
   cancelSelection();refreshAll();return true;
 }
 
-function pathMoveCost(path){
-  return path.reduce((sum,{q,r})=>sum+moveCost(grid[ri(q,r)]),0);
+function pathMoveCost(path,owner){
+  return path.reduce((sum,{q,r})=>sum+moveCostAt(q,r,owner),0);
 }
 
 function findAttackStandSpot(sq,sr,tq,tr,unit){
@@ -208,7 +219,7 @@ function findAttackStandSpot(sq,sr,tq,tr,unit){
     if(cell.unit&&!(q===sq&&r===sr))continue;
     const path=bfsPathHex(sq,sr,q,r,unit.owner);
     if(!path)continue;
-    const cost=pathMoveCost(path);
+    const cost=pathMoveCost(path,unit.owner);
     if(cost>unit.move)continue;
     candidates.push({q,r,path,cost});
   }
@@ -256,6 +267,7 @@ function onHexClick(q,r){
   }
 
   if(phase!=='battle')return;
+  if(turnBusy||actionBusy)return;
   const cell=grid[ri(q,r)];
 
   if(selectedUnit&&q===selectedUnit.q&&r===selectedUnit.r){cancelSelection();return;}
@@ -277,7 +289,7 @@ function onHexClick(q,r){
     const attacker=grid[ri(selectedUnit.q,selectedUnit.r)].unit;
     if(cell.tower&&cell.tower.owner==='e'&&canAttackTower(attacker)&&hexDist(selectedUnit.q,selectedUnit.r,q,r)<=attacker.range&&!attacker.attackedThisTurn){
       if(cell.unit&&cell.unit.owner==='e'){
-        const attackUnit=confirm('이 칸에는 기물과 감시탑이 함께 있습니다.\n확인: 기물 공격\n취소: 감시탑 공격');
+        const attackUnit=confirmStackedAttack('tower');
         if(!attackUnit){doAttackTower(selectedUnit.q,selectedUnit.r,q,r);return;}
       } else if(highlighted.has(`${q},${r}`)&&!cell.unit){
         const captureTower=confirm('주둔 병력이 없는 적 감시탑입니다.\n확인: 이동해 점령\n취소: 감시탑 공격');
@@ -307,13 +319,21 @@ function onHexClick(q,r){
     if(healTargets.has(`${q},${r}`)){doHeal(selectedUnit.q,selectedUnit.r,q,r);return;}
     if(mode==='heal-move'){
       // 아군 다른 유닛 클릭 시 선택 전환
-      if(cell.unit&&cell.unit.owner==='p'){selectPlayerUnit(q,r);return;}
+      if(cell.unit&&cell.unit.owner==='p'&&cell.unit.name!=='킹'){selectPlayerUnit(q,r);return;}
       // 그 외엔 이동 예약 (일반 move 모드와 동일)
       reserveMoveTo(q,r);return;
     }
     cancelSelection();return;
   }
-  if(cell.unit&&cell.unit.owner==='p'){selectPlayerUnit(q,r);return;}
+  if(cell.unit&&cell.unit.owner==='p'){
+    if(cell.unit.name==='킹'){
+      cancelSelection();
+      showUnitInfo(UNIT_DEFS[cell.unit.name],cell.unit.name,cell.unit,q,r);
+      setHint('아군 킹은 선택할 수 없습니다');
+      return;
+    }
+    selectPlayerUnit(q,r);return;
+  }
   cancelSelection();
 }
 
@@ -343,24 +363,27 @@ function doMove(q,r){
   if(unit.waitTurns>0){log('강 대기 중 이동 불가','system');return;}
   if(unit.movedThisTurn){log('이미 이동했습니다','system');return;}
   if(unit.name==='공병'&&engineerIsBuilding(sq,sr)){log('🔨 건설 중인 공병은 이동할 수 없습니다','system');return;}
-  if(availableTokens()<1){log('토큰 부족','system');return;}
+  if(availableMoveTokens(unit.owner)<1){log('동작 토큰 부족','system');return;}
   if(hexDist(sq,sr,q,r)>unit.move){log(`이동 범위 초과 (최대 ${unit.move}칸)`,'system');return;}
   const dest=grid[ri(q,r)];
   if(dest.terrain==='mountain'){log('산은 이동 불가','system');return;}
   if(dest.unit){log('다른 기물이 있습니다','system');return;}
+  const cost=moveCostAt(q,r,unit.owner);
+  if(cost>unit.move){log(`이동 비용 초과 (필요 ${cost}, 이동력 ${unit.move})`,'system');return;}
+  if(availableMoveTokens(unit.owner)<cost){log(`동작 토큰 부족 (필요 ${cost}개)`,'system');return;}
   if(dest.terrain==='river'&&!dest.bridge){
-    if(availableTokens()<2){log('강 진입: 토큰 2개 필요','system');return;}
-    spendTokens(1);unit.waitTurns=2;log(`🌊 강 진입 — ${unit.name} 2턴 대기`,'player');
+    unit.waitTurns=2;log(`🌊 강 진입 — ${unit.name} 2턴 대기`,'player');
   }
   const oldKey=`${sq},${sr}`;
   if(reservations[oldKey]){reservations[`${q},${r}`]=reservations[oldKey];delete reservations[oldKey];}
   grid[ri(q,r)].unit=unit;grid[ri(sq,sr)].unit=null;
-  spendTokens(1);unit.movedThisTurn=true;
+  spendMoveTokens(cost,unit.owner);unit.movedThisTurn=true;
   log(`${UNIT_DEFS[unit.name].emoji} ${unit.name} (${sq},${sr})→(${q},${r})`,'player');
   cancelSelection();updateHUD();refreshAll();checkWinCondition();
 }
 
 async function doAttack(sq,sr,tq,tr){
+  if(actionBusy)return;
   const atk=grid[ri(sq,sr)].unit,def=grid[ri(tq,tr)].unit;
   if(!atk||!def)return;
   if(atk.owner===def.owner){log('아군 공격 불가','system');return;}
@@ -370,21 +393,28 @@ async function doAttack(sq,sr,tq,tr){
   if(!visibleHexes.has(`${tq},${tr}`)){log('시야 밖 대상은 공격할 수 없습니다','system');return;}
   if(isRangedMountainBlocked(atk,sq,sr,tq,tr)){log('산이 사선을 막아 공격할 수 없습니다','system');return;}
   if(grid[ri(tq,tr)].tower&&grid[ri(tq,tr)].tower.owner!==atk.owner&&canAttackTower(atk)){
-    const attackUnit=confirm('이 칸에는 기물과 감시탑이 함께 있습니다.\n확인: 기물 공격\n취소: 감시탑 공격');
+    const attackUnit=confirmStackedAttack('tower');
     if(!attackUnit){doAttackTower(sq,sr,tq,tr);return;}
   }
   if(grid[ri(tq,tr)].bridge&&canAttackBridge(atk)){
-    const attackUnit=confirm('이 칸에는 기물과 다리가 함께 있습니다.\n확인: 기물 공격\n취소: 다리 공격');
+    const attackUnit=confirmStackedAttack('bridge');
     if(!attackUnit){doAttackBridge(sq,sr,tq,tr);return;}
   }
-  await animateCombat(sq,sr,tq,tr);
-  resolveCombat(atk,def,sq,sr,tq,tr);atk.attackedThisTurn=true;
-  if(def.hp<=0)grid[ri(tq,tr)].unit=null;
-  if(atk.hp<=0)grid[ri(sq,sr)].unit=null;
-  cancelSelection();updateHUD();refreshAll();checkWinCondition();
+  actionBusy=true;
+  atk.attackedThisTurn=true;
+  try{
+    await animateCombat(sq,sr,tq,tr);
+    resolveCombat(atk,def,sq,sr,tq,tr);
+    if(def.hp<=0)grid[ri(tq,tr)].unit=null;
+    if(atk.hp<=0)grid[ri(sq,sr)].unit=null;
+    cancelSelection();updateHUD();refreshAll();checkWinCondition();
+  } finally {
+    actionBusy=false;
+  }
 }
 
 async function doAttackTower(sq,sr,tq,tr){
+  if(actionBusy)return;
   const atk=grid[ri(sq,sr)].unit,cell=grid[ri(tq,tr)];
   if(!atk||!cell.tower)return;
   if(cell.tower.owner===atk.owner){log('아군 감시탑 공격 불가','system');return;}
@@ -394,27 +424,34 @@ async function doAttackTower(sq,sr,tq,tr){
   if(hexDist(sq,sr,tq,tr)>atk.range){log('사거리 초과','system');return;}
   if(!visibleHexes.has(`${tq},${tr}`)){log('시야 밖 대상은 공격할 수 없습니다','system');return;}
   if(isRangedMountainBlocked(atk,sq,sr,tq,tr)){log('산이 사선을 막아 공격할 수 없습니다','system');return;}
-  await animateCombat(sq,sr,tq,tr);
-  const dmg=atk.name==='트레뷰셋'?atk.atk*2:atk.atk;
-  cell.tower.hp-=dmg;atk.attackedThisTurn=true;
-  log(`${UNIT_DEFS[atk.name].emoji}${atk.name}→🗼 감시탑: ${dmg}피해`,'combat');
-  if(cell.tower.hp<=0){
-    cell.tower=null;
-    log('🗼 감시탑 파괴!','combat');
-    if(cell.unit){
-      const fallDmg=Math.ceil(cell.unit.maxHp/2);
-      cell.unit.hp-=fallDmg;
-      log(`💥 주둔 ${cell.unit.name} 낙하 피해 ${fallDmg}`,cell.unit.owner==='p'?'player':'enemy');
-      if(cell.unit.hp<=0){
-        log(`💀 ${cell.unit.name} 사망`,cell.unit.owner==='p'?'player':'enemy');
-        cell.unit=null;
+  actionBusy=true;
+  atk.attackedThisTurn=true;
+  try{
+    await animateCombat(sq,sr,tq,tr);
+    const dmg=atk.name==='트레뷰셋'?atk.atk*2:atk.atk;
+    cell.tower.hp-=dmg;
+    log(`${UNIT_DEFS[atk.name].emoji}${atk.name}→🗼 감시탑: ${dmg}피해`,'combat');
+    if(cell.tower.hp<=0){
+      cell.tower=null;
+      log('🗼 감시탑 파괴!','combat');
+      if(cell.unit){
+        const fallDmg=Math.ceil(cell.unit.maxHp/2);
+        cell.unit.hp-=fallDmg;
+        log(`💥 주둔 ${cell.unit.name} 낙하 피해 ${fallDmg}`,cell.unit.owner==='p'?'player':'enemy');
+        if(cell.unit.hp<=0){
+          log(`💀 ${cell.unit.name} 사망`,cell.unit.owner==='p'?'player':'enemy');
+          cell.unit=null;
+        }
       }
     }
+    cancelSelection();updateHUD();refreshAll();checkWinCondition();
+  } finally {
+    actionBusy=false;
   }
-  cancelSelection();updateHUD();refreshAll();checkWinCondition();
 }
 
 async function doAttackBridge(sq,sr,tq,tr){
+  if(actionBusy)return;
   const atk=grid[ri(sq,sr)].unit,cell=grid[ri(tq,tr)];
   if(!atk||!cell.bridge)return;
   if(!canAttackBridge(atk)){log('다리는 트레뷰셋과 포병만 공격할 수 있습니다','system');return;}
@@ -423,19 +460,25 @@ async function doAttackBridge(sq,sr,tq,tr){
   if(hexDist(sq,sr,tq,tr)>atk.range){log('사거리 초과','system');return;}
   if(!visibleHexes.has(`${tq},${tr}`)){log('시야 밖 대상은 공격할 수 없습니다','system');return;}
   if(isRangedMountainBlocked(atk,sq,sr,tq,tr)){log('산이 사선을 막아 공격할 수 없습니다','system');return;}
-  await animateCombat(sq,sr,tq,tr);
-  const dmg=atk.name==='트레뷰셋'?atk.atk*2:atk.atk;
-  cell.bridge.hp-=dmg;atk.attackedThisTurn=true;
-  log(`${UNIT_DEFS[atk.name].emoji}${atk.name}→🌉 다리: ${dmg}피해`,'combat');
-  if(cell.bridge.hp<=0){
-    cell.bridge=null;
-    log('🌉 다리 파괴!','combat');
-    if(cell.unit){
-      log(`💀 ${cell.unit.name} 추락 사망`,cell.unit.owner==='p'?'player':'enemy');
-      cell.unit=null;
+  actionBusy=true;
+  atk.attackedThisTurn=true;
+  try{
+    await animateCombat(sq,sr,tq,tr);
+    const dmg=atk.name==='트레뷰셋'?atk.atk*2:atk.atk;
+    cell.bridge.hp-=dmg;
+    log(`${UNIT_DEFS[atk.name].emoji}${atk.name}→🌉 다리: ${dmg}피해`,'combat');
+    if(cell.bridge.hp<=0){
+      cell.bridge=null;
+      log('🌉 다리 파괴!','combat');
+      if(cell.unit){
+        log(`💀 ${cell.unit.name} 추락 사망`,cell.unit.owner==='p'?'player':'enemy');
+        cell.unit=null;
+      }
     }
+    cancelSelection();updateHUD();refreshAll();checkWinCondition();
+  } finally {
+    actionBusy=false;
   }
-  cancelSelection();updateHUD();refreshAll();checkWinCondition();
 }
 
 function canEvade(unit){
@@ -725,6 +768,11 @@ async function stepReservation(key){
   const unit=grid[ri(sq,sr)].unit;
   if(!unit||unit.owner!==res.owner){delete reservations[key];return false;}
   if(unit.waitTurns>0)return false;
+  if((res.type==='attack'||res.type==='moveAttack')&&!visibleHexes.has(`${res.attackQ},${res.attackR}`)){
+    log(`📌 공격 예약 취소: 시야 밖 (${res.attackQ},${res.attackR})`,'system');
+    delete reservations[key];
+    return false;
+  }
   if((res.type==='attack'||res.type==='moveAttack')&&canExecuteReservedAttack(unit,sq,sr,res)){
     await executeReservedAttack(unit,sq,sr,res);
     delete reservations[key];
@@ -757,11 +805,11 @@ async function stepReservation(key){
     delete reservations[key];return false;
   }
   if(dest.unit&&dest.unit.owner===unit.owner){return false;}
-  const cost=moveCost(dest);
+  const cost=moveCostAt(step.q,step.r,unit.owner);
   if((res.movedThisTurnCost||0)+cost>unit.move)return false;
-  if(availableTokens()<cost)return false;
+  if(availableMoveTokens(unit.owner)<cost)return false;
   if(dest.unit&&dest.unit.owner!==unit.owner){
-    spendTokens(cost);
+    spendMoveTokens(cost,unit.owner);
     res.movedThisTurnCost=(res.movedThisTurnCost||0)+cost;
     await resolveReservationDuel(unit,dest.unit,sq,sr,step.q,step.r);
     delete reservations[key];
@@ -772,7 +820,7 @@ async function stepReservation(key){
     log(`🗼 ${unit.name} 감시탑 점령 (${step.q},${step.r})`,unit.owner==='p'?'player':'enemy');
   }
   grid[ri(step.q,step.r)].unit=unit;grid[ri(sq,sr)].unit=null;
-  spendTokens(cost);
+  spendMoveTokens(cost,unit.owner);
   res.movedThisTurnCost=(res.movedThisTurnCost||0)+cost;
   delete reservations[key];
   if(res.type==='moveAttack'&&step.q===res.tq&&step.r===res.tr){
@@ -791,6 +839,7 @@ function canExecuteReservedAttack(unit,sq,sr,res){
   if(!unit||unit.attackedThisTurn||unit.waitTurns>0)return false;
   const target=grid[ri(res.attackQ,res.attackR)].unit;
   if(!target||target.owner===unit.owner)return false;
+  if(!visibleHexes.has(`${res.attackQ},${res.attackR}`))return false;
   if(hexDist(sq,sr,res.attackQ,res.attackR)>unit.range)return false;
   if(isRangedMountainBlocked(unit,sq,sr,res.attackQ,res.attackR))return false;
   return true;
@@ -804,6 +853,10 @@ async function executeReservedAttack(unit,sq,sr,res){
     return;
   }
   if(unit.attackedThisTurn||unit.waitTurns>0)return;
+  if(!visibleHexes.has(`${res.attackQ},${res.attackR}`)){
+    log(`📌 공격 예약 보류: 시야 밖 (${res.attackQ},${res.attackR})`,'system');
+    return;
+  }
   if(hexDist(sq,sr,res.attackQ,res.attackR)>unit.range){
     log(`📌 공격 예약 보류: 사거리 초과 (${res.attackQ},${res.attackR})`,'system');
     return;
@@ -861,17 +914,17 @@ function executeReservationsLegacy(){
     const[sq,sr]=key.split(',').map(Number);
     const unit=grid[ri(sq,sr)].unit;
     if(!unit||unit.owner!=='p'){toDel.push(key);continue;}
-    if(unit.waitTurns>0||unit.movedThisTurn||availableTokens()<1)continue;
+    if(unit.waitTurns>0||unit.movedThisTurn||availableMoveTokens(unit.owner)<1)continue;
     if(sq===tq&&sr===tr){toDel.push(key);continue;}
     const path=bfsPathHex(sq,sr,tq,tr,'p');if(!path||path.length===0)continue;
     let cq=sq,cr=sr,moveSpent=0,moved=false;
     for(const step of path){
       const dest=grid[ri(step.q,step.r)];
-      const cost=moveCost(dest);
-      if(moveSpent+cost>unit.move||availableTokens()<cost)break;
+      const cost=moveCostAt(step.q,step.r,unit.owner);
+      if(moveSpent+cost>unit.move||availableMoveTokens(unit.owner)<cost)break;
       if(dest.unit||dest.wall||dest.terrain==='mountain')break;
       grid[ri(step.q,step.r)].unit=unit;grid[ri(cq,cr)].unit=null;
-      spendTokens(cost);moveSpent+=cost;moved=true;
+      spendMoveTokens(cost,unit.owner);moveSpent+=cost;moved=true;
       cq=step.q;cr=step.r;
       if(dest.terrain==='river'&&!dest.bridge){
         unit.waitTurns=2;

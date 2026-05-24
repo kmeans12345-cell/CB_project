@@ -163,26 +163,35 @@ function aiMoveUnitToward(q,r,unit,aiT){
 // ══════════════════════════════════════════════
 async function endTurn(){
   if(phase!=='battle')return;
-  cancelSelection();
-  await aiTurn();
-  await executeReservations();
-  await processAutoBuildings();
-  const saved=Math.min(tokens,PIGGY_MAX-piggy);
-  if(saved>0){piggy+=saved;log(`💰 미사용 토큰 ${saved}개 → 저금통(${piggy}개)`,'system');}
-  tokens=0;
-  grid.forEach(c=>{if(c.unit&&c.unit.waitTurns>0)c.unit.waitTurns--;});
-  applyBaseDamage();
-  checkWinCondition();
-  if(phase!=='battle')return; // ended
-  turn++;if(turn>MAX_TURNS){endGame();return;}
-  tokens=BASE_TOKENS;
-  if(playerDeck.length>0)playerHand.push(playerDeck.pop());
-  else if(playerDiscard.length>0){playerDeck=shuffle(playerDiscard);playerDiscard=[];playerHand.push(playerDeck.pop());}
-  grid.forEach(c=>{if(c.unit){c.unit.movedThisTurn=false;c.unit.attackedThisTurn=false;c.unit.builtThisTurn=false;}});
-  document.getElementById('phase-text').textContent=`전투 중 — 턴 ${turn}/${MAX_TURNS}`;
-  updateHUD();refreshAll();renderHand();checkWinCondition();
-  log(`── 턴 ${turn} 시작 — 토큰 ${BASE_TOKENS}개 (저금통 ${piggy}개) ──`,'system');
-  setHint('기물 카드를 선택해 배치하거나, 기물을 클릭해 이동/공격하세요');
+  if(turnBusy)return;
+  turnBusy=true;
+  const endBtn=document.getElementById('btn-end-turn');
+  if(endBtn)endBtn.disabled=true;
+  try{
+    cancelSelection();
+    await aiTurn();
+    await executeReservations();
+    await processAutoBuildings();
+    const saved=Math.min(tokens,PIGGY_MAX-piggy);
+    if(saved>0){piggy+=saved;log(`💰 미사용 토큰 ${saved}개 → 저금통(${piggy}개)`,'system');}
+    tokens=0;
+    grid.forEach(c=>{if(c.unit&&c.unit.waitTurns>0)c.unit.waitTurns--;});
+    applyBaseDamage();
+    checkWinCondition();
+    if(phase!=='battle')return; // ended
+    turn++;if(turn>MAX_TURNS){endGame();return;}
+    tokens=BASE_TOKENS;
+    if(playerDeck.length>0)playerHand.push(playerDeck.pop());
+    else if(playerDiscard.length>0){playerDeck=shuffle(playerDiscard);playerDiscard=[];playerHand.push(playerDeck.pop());}
+    grid.forEach(c=>{if(c.unit){c.unit.movedThisTurn=false;c.unit.attackedThisTurn=false;c.unit.builtThisTurn=false;}});
+    document.getElementById('phase-text').textContent=`전투 중 — 턴 ${turn}/${MAX_TURNS}`;
+    updateHUD();refreshAll();renderHand();checkWinCondition();
+    log(`── 턴 ${turn} 시작 — 토큰 ${BASE_TOKENS}개 (저금통 ${piggy}개) ──`,'system');
+    setHint('기물 카드를 선택해 배치하거나, 기물을 클릭해 이동/공격하세요');
+  } finally {
+    turnBusy=false;
+    if(endBtn)endBtn.disabled=false;
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -218,10 +227,27 @@ function checkWinCondition(){
 }
 function endGame(msg){
   if(!msg){
-    let p=0,e=0;grid.forEach(c=>{if(c.unit){if(c.unit.owner==='p')p++;else e++;}});
-    msg=p>e?`판정 승리! 기물 ${p}:${e} 🎉`:e>p?`판정 패배. 기물 ${p}:${e}`:`무승부! ${p}:${e}`;
+    const score=scoreFinalJudgement();
+    if(score.player>score.enemy){
+      msg=`판정 승리! 점수 ${score.player}:${score.enemy} 🎉\n기물 ${score.pieces.p}:${score.pieces.e} / 진영HP ${playerBaseHp}:${enemyBaseHp} / 감시탑 ${score.towers.p}:${score.towers.e}`;
+    } else if(score.enemy>score.player){
+      msg=`판정 패배. 점수 ${score.player}:${score.enemy}\n기물 ${score.pieces.p}:${score.pieces.e} / 진영HP ${playerBaseHp}:${enemyBaseHp} / 감시탑 ${score.towers.p}:${score.towers.e}`;
+    } else {
+      msg=`무승부! 점수 ${score.player}:${score.enemy}\n기물 ${score.pieces.p}:${score.pieces.e} / 진영HP ${playerBaseHp}:${enemyBaseHp} / 감시탑 ${score.towers.p}:${score.towers.e}`;
+    }
   }
   showModal('게임 종료',msg+`\n최종 턴: ${turn}`);
+}
+
+function scoreFinalJudgement(){
+  const pieces={p:0,e:0},towers={p:0,e:0};
+  grid.forEach(c=>{
+    if(c.unit)pieces[c.unit.owner]++;
+    if(c.tower)towers[c.tower.owner]++;
+  });
+  const player=pieces.p*10+playerBaseHp+piggy+towers.p*5;
+  const enemy=pieces.e*10+enemyBaseHp+towers.e*5;
+  return{player,enemy,pieces,towers};
 }
 
 function showModal(t,b){document.getElementById('modal-title').textContent=t;document.getElementById('modal-body').textContent=b;document.getElementById('modal-overlay').classList.add('active');}

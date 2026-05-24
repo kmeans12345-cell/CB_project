@@ -16,6 +16,8 @@ let aiDeck=[],aiHand=[],aiDiscard=[];
 let grid=[];
 let mode=null;
 let selectedCard=null,selectedUnit=null;
+let actionBusy=false;
+let turnBusy=false;
 let reservations={};
 let playerReservationQueue=[];
 let aiReservationQueue=[];
@@ -71,5 +73,14 @@ function spendTokens(amount){
   const fromPiggy=Math.min(piggy,amount);
   piggy-=fromPiggy;
   tokens-=amount-fromPiggy;
+  return true;
+}
+function availableMoveTokens(owner='p'){
+  return owner==='p'?tokens:BASE_TOKENS;
+}
+function spendMoveTokens(amount,owner='p'){
+  if(owner!=='p')return true;
+  if(tokens<amount)return false;
+  tokens-=amount;
   return true;
 }
