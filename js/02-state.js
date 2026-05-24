@@ -1,5 +1,5 @@
 ﻿function buildDeck(){
-  const counts={보병:3,궁병:3,창병:3,공병:3,기마병:3,방패병:1,포병:1,트레뷰셋:1,기사:1,마법사:1};
+  const counts={보병:3,궁병:3,창병:3,공병:3,기마병:3,방패병:1,포병:1,트레뷰셋:1,기사:1,마법사:1,힐러:1};
   const d=[];
   for(const[k,n]of Object.entries(counts))for(let i=0;i<n;i++)d.push({type:k,id:Math.random().toString(36).slice(2)});
   return shuffle(d);
@@ -25,6 +25,7 @@ let pendingBuildings=[];
 let playerBaseHp=BASE_HP, enemyBaseHp=BASE_HP;
 let highlighted=new Set();
 let attackTargets=new Set();
+let healTargets=new Set();
 let visibleHexes=new Set();
 let exploredHexes=new Set();
 

@@ -73,7 +73,6 @@
     </div>
     <div id="action-hint"></div>
     <div id="action-area">
-      <button class="action-btn primary" id="btn-end-turn" onclick="endTurn()" style="display:none">배치 완료</button>
       <button class="action-btn skip-btn" id="btn-skip-obs" onclick="skipObsTurn()" style="display:none">이번 턴 건너뛰기</button>
       <button class="action-btn reserve-btn" id="btn-reserve" onclick="startReserveMode()" style="display:none">📌 이동 예약</button>
       <button class="action-btn cancel-btn" id="btn-cancel" onclick="cancelSelection()" style="display:none">선택 취소 (ESC)</button>
@@ -92,6 +91,7 @@
     <button onclick="closeModal()">확인</button>
   </div>
 </div>
+<button id="btn-end-turn" onclick="endTurn()" style="display:none">턴 종료</button>
 <div id="hex-tooltip"></div>
 
 <script src="js/01-core.js"></script>

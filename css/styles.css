@@ -100,3 +100,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Serif KR',serif;mi
 #modal button:hover{background:#b07820;}
 
 #hex-tooltip{position:fixed;background:var(--bg2);border:1px solid var(--border2);border-radius:4px;padding:4px 8px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text2);pointer-events:none;display:none;z-index:150;}
+
+/* 턴 종료 버튼 — 전투 중 항상 우측 상단 고정 */
+#btn-end-turn{position:fixed;top:10px;right:14px;z-index:100;padding:6px 18px;background:var(--accent);border:1px solid var(--gold);color:var(--gold2);font-family:'Noto Serif KR',serif;font-size:12px;font-weight:700;cursor:pointer;border-radius:4px;letter-spacing:1px;transition:background 0.15s;}
+#btn-end-turn:hover{background:#a07820;}

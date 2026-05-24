@@ -67,11 +67,11 @@ function hexReachable(q,r,steps,owner){
       if(vis.has(key))continue;
       if(cell.terrain==='mountain')continue;
       if(cell.wall&&cell.wall.owner===owner)continue;
-      if(cell.unit&&cell.unit.owner===owner)continue;
+      if(cell.unit&&cell.unit.owner!==owner&&visibleHexes.has(key))continue; // 시야 내 적 기물만 통과 불가 (안개 속 적은 인식 불가)
       const mc=moveCost(cell),nc=cur.cost+mc;
       if(nc>steps)continue;
       vis.set(key,nc);front.push({q:nb.q,r:nb.r,cost:nc});
-      result.push({q:nb.q,r:nb.r});
+      if(!cell.unit)result.push({q:nb.q,r:nb.r}); // 아군 기물 칸은 통과만 가능, 정지 불가
     }
   }
   return result;
@@ -89,7 +89,7 @@ function bfsPathHex(sq,sr,tq,tr,owner){
       const cell=grid[ri(nb.q,nb.r)];
       const isTarget=nb.q===tq&&nb.r===tr;
       if(cell.terrain==='mountain'||cell.wall)continue;
-      if(cell.unit&&!isTarget)continue;
+      if(cell.unit&&cell.unit.owner!==owner&&!isTarget&&visibleHexes.has(key))continue; // 시야 내 적만 장애물, 안개 속 적은 인식 불가
       const riverPenalty=cell.terrain==='river'&&!cell.bridge?100:0;
       const nextScore=score+1+riverPenalty;
       if(best.has(key)&&best.get(key)<=nextScore)continue;
@@ -130,13 +130,17 @@ const UNIT_DEFS={
   보병:    {cost:1,atk:30, def:10,hp:50, move:1,range:1,sight:1,emoji:'⚔️',special:'1칸 내 적 공격'},
   궁병:    {cost:1,atk:20, def:10,hp:40, move:2,range:2,sight:2,emoji:'🏹',special:'2칸 이동, 2칸 사거리 공격'},
   방패병:  {cost:1,atk:0,  def:10,hp:60, move:1,range:0,sight:1,emoji:'🛡️',special:'위치한 칸 봉쇄'},
-  창병:    {cost:2,atk:30, def:10,hp:50, move:1,range:1,sight:1,emoji:'🗡️',special:'기마병에 +20 피해'},
+  창병:    {cost:2,atk:30, def:10,hp:50, move:1,range:1,sight:1,emoji:'🔱',special:'기마병에 +20 피해'},
   공병:    {cost:1,atk:10, def:10,hp:10, move:1,range:1,sight:1,emoji:'🔨',special:'건축물 건설(벽/다리/감시탑)'},
   포병:    {cost:4,atk:50, def:10,hp:40, move:1,range:2,sight:2,emoji:'💣',special:'2칸 광역 중심50/주변10'},
   기마병:  {cost:3,atk:30, def:10,hp:60, move:3,range:1,sight:1,emoji:'🐴',special:'이동력 3칸'},
   트레뷰셋:{cost:6,atk:50, def:0,hp:60, move:1,range:3,sight:2,emoji:'⚙️',special:'3칸, 건축물 2배 피해'},
-  기사:    {cost:5,atk:50, def:30,hp:60, move:3,range:1,sight:1,emoji:'🗡️',special:'방어 30, 이동 3'},
+  기사:    {cost:5,atk:50, def:30,hp:60, move:3,range:1,sight:1,emoji:'♞',special:'방어 30, 이동 3'},
   마법사:  {cost:5,atk:40, def:10,hp:40, move:1,range:2,sight:2,emoji:'🔮',special:'2칸+인접 스플래시 20'},
+  힐러:    {cost:3,atk:0,  def:10,hp:40, move:1,range:2,sight:2,emoji:'⚕️',special:'2칸 내 아군 1기 HP +30 회복, 공격 불가'},
   킹:      {cost:0,atk:0,  def:10,hp:200,move:0,range:0,sight:1,emoji:'👑',special:'진영 핵심 기물, 이동 불가'},
 };
 const BASE_HP=200;
+
+// 유닛 한글 약자 (SVG 맵 아이콘용)
+const UNIT_ABBR={보병:'보',궁병:'궁',방패병:'방',창병:'창',공병:'공',포병:'포',기마병:'기',트레뷰셋:'투',기사:'사',마법사:'마',힐러:'힐',킹:'왕'};

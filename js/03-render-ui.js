@@ -4,6 +4,7 @@
 const NS='http://www.w3.org/2000/svg';
 let hexEls={};
 let reservationLineG=null;
+let combatFxG=null;
 
 function initSVG(){
   const svg=document.getElementById('hex-svg');
@@ -26,6 +27,7 @@ function initSVG(){
     .hp.se{stroke:#e05050;stroke-width:2;stroke-dasharray:5,2;}
     .hp.unit-p{stroke:#3a9a3a;stroke-width:2.5;}
     .hp.unit-e{stroke:#e05050;stroke-width:2.5;}
+    .hp.heal{stroke:#4ab8e8;stroke-width:2.5;}
     .hp.unit-p.sel{stroke:#f0cc6e;stroke-width:3;}
     .hp.unit-e.sel{stroke:#f0cc6e;stroke-width:3;}
     .hp.unit-p.hl{stroke:#c8a84b;stroke-width:2.5;}
@@ -34,12 +36,19 @@ function initSVG(){
     .reservation-line.move{stroke:#3a9a3a;}
     .reservation-line.attack{stroke:#e05050;}
     .reservation-line.e.move{stroke:#e05050;}
+    .res-dest-move{fill:#3a9a3a;fill-opacity:0.22;stroke:#3a9a3a;stroke-width:2;pointer-events:none;opacity:0.9;}
+    .res-dest-move.e{fill:#e05050;fill-opacity:0.22;stroke:#e05050;}
+    .res-dest-atk{fill:#e05050;fill-opacity:0.18;stroke:#e05050;stroke-width:2;stroke-dasharray:3,2;pointer-events:none;opacity:0.9;}
+    .res-src-ring{fill:none;stroke-width:1.5;stroke-dasharray:4,2;pointer-events:none;opacity:0.6;}
+    .res-src-ring.p{stroke:#4aaa4a;}
+    .res-src-ring.e{stroke:#e05050;}
+    .combat-line{fill:none;stroke:#ff5050;stroke-width:4;stroke-linecap:round;pointer-events:none;opacity:0;animation:combatLine 0.38s ease-out forwards;}
+    .combat-impact{fill:none;stroke:#ffdf70;stroke-width:3;pointer-events:none;opacity:0;animation:combatImpact 0.38s ease-out forwards;}
+    @keyframes combatLine{0%{opacity:0;stroke-dasharray:1 180;}25%{opacity:1;}100%{opacity:0;stroke-dasharray:180 1;}}
+    @keyframes combatImpact{0%{opacity:0;r:2;}35%{opacity:1;r:7;}100%{opacity:0;r:18;}}
     .ht{pointer-events:none;text-anchor:middle;dominant-baseline:central;font-family:'JetBrains Mono',monospace;}
   `;
   svg.appendChild(style);
-
-  reservationLineG=document.createElementNS(NS,'g');
-  svg.appendChild(reservationLineG);
 
   const hexG=document.createElementNS(NS,'g');
   svg.appendChild(hexG);
@@ -56,34 +65,66 @@ function initSVG(){
     poly.addEventListener('mouseenter',()=>onHexHover(q,r));
     poly.addEventListener('mouseleave',()=>onHexLeave());
 
+    // 유닛 아이콘용 컬러 원 배경
+    const unitCircle=document.createElementNS(NS,'circle');
+    unitCircle.setAttribute('cx',x);unitCircle.setAttribute('cy',y-5);
+    unitCircle.setAttribute('r','9');unitCircle.setAttribute('fill','none');
+    unitCircle.setAttribute('stroke','none');unitCircle.setAttribute('pointer-events','none');
+
+    // HP 바 배경 (회색)
+    const hpBarBg=document.createElementNS(NS,'rect');
+    hpBarBg.setAttribute('x',x-9);hpBarBg.setAttribute('y',y+6);
+    hpBarBg.setAttribute('width','18');hpBarBg.setAttribute('height','3');
+    hpBarBg.setAttribute('rx','1');hpBarBg.setAttribute('fill','none');
+    hpBarBg.setAttribute('pointer-events','none');
+
+    // HP 바 채움 (비율에 따라 색상 변화)
+    const hpBarFill=document.createElementNS(NS,'rect');
+    hpBarFill.setAttribute('x',x-9);hpBarFill.setAttribute('y',y+6);
+    hpBarFill.setAttribute('width','0');hpBarFill.setAttribute('height','3');
+    hpBarFill.setAttribute('rx','1');hpBarFill.setAttribute('fill','none');
+    hpBarFill.setAttribute('pointer-events','none');
+
+    // 좌표/예약 정보 텍스트 (최하단)
     const coord=document.createElementNS(NS,'text');
-    coord.setAttribute('x',x);coord.setAttribute('y',y+HEX_SIZE*0.62);
-    coord.setAttribute('class','ht');coord.setAttribute('font-size','7');coord.setAttribute('fill','#444');
+    coord.setAttribute('x',x);coord.setAttribute('y',y+21);
+    coord.setAttribute('class','ht');coord.setAttribute('font-size','6.5');coord.setAttribute('fill','#444');
     coord.textContent=`${q},${r}`;
 
+    // 유닛 약자 or 지형/건축물 이모지 (원 중앙)
     const unitTxt=document.createElementNS(NS,'text');
-    unitTxt.setAttribute('x',x);unitTxt.setAttribute('y',y-2);
+    unitTxt.setAttribute('x',x);unitTxt.setAttribute('y',y-5);
     unitTxt.setAttribute('class','ht');unitTxt.setAttribute('font-size','14');unitTxt.textContent='';
 
+    // HP 수치 텍스트 (HP바 아래)
     const hpTxt=document.createElementNS(NS,'text');
-    hpTxt.setAttribute('x',x);hpTxt.setAttribute('y',y+HEX_SIZE*0.35);
-    hpTxt.setAttribute('class','ht');hpTxt.setAttribute('font-size','7');hpTxt.textContent='';
+    hpTxt.setAttribute('x',x);hpTxt.setAttribute('y',y+12);
+    hpTxt.setAttribute('class','ht');hpTxt.setAttribute('font-size','6.5');hpTxt.textContent='';
 
-    g.appendChild(poly);g.appendChild(coord);g.appendChild(unitTxt);g.appendChild(hpTxt);
+    g.appendChild(poly);g.appendChild(unitCircle);g.appendChild(hpBarBg);g.appendChild(hpBarFill);g.appendChild(coord);g.appendChild(unitTxt);g.appendChild(hpTxt);
     hexG.appendChild(g);
-    hexEls[`${q},${r}`]={poly,unitTxt,hpTxt,coord,cx:x,cy:y};
+    hexEls[`${q},${r}`]={poly,unitTxt,hpTxt,coord,unitCircle,hpBarBg,hpBarFill,cx:x,cy:y};
   }
+
+  // 예약 라인/마커 그룹: hexG 위, combatFx 아래
+  reservationLineG=document.createElementNS(NS,'g');
+  svg.appendChild(reservationLineG);
+
+  combatFxG=document.createElementNS(NS,'g');
+  svg.appendChild(combatFxG);
 }
 
 function refreshHex(q,r){
   const key=`${q},${r}`,el=hexEls[key];if(!el)return;
-  const cell=grid[ri(q,r)];const{poly,unitTxt,hpTxt,coord}=el;
+  const cell=grid[ri(q,r)];const{poly,unitTxt,hpTxt,coord,unitCircle,hpBarBg,hpBarFill}=el;
   const visible=visibleHexes.has(key),explored=exploredHexes.has(key);
 
   if(!explored){
     poly.setAttribute('fill','#050506');
     poly.setAttribute('class','hp fog');
     unitTxt.textContent='';hpTxt.textContent='';coord.textContent='';
+    unitCircle.setAttribute('fill','none');unitCircle.setAttribute('stroke','none');
+    hpBarBg.setAttribute('fill','none');hpBarFill.setAttribute('fill','none');
     return;
   }
 
@@ -102,20 +143,46 @@ function refreshHex(q,r){
     cls+=(cell.unit.owner==='p')?' unit-p':' unit-e';
   }
   if(highlighted.has(key))cls+=' hl';
+  if(healTargets.has(key))cls+=' heal';
   if(attackTargets.has(key))cls+=' atk';
   if(selectedUnit&&selectedUnit.q===q&&selectedUnit.r===r)cls+=' sel';
   if(Object.values(reservations).some(v=>v.tq===q&&v.tr===r))cls+=' rv';
   poly.setAttribute('class',cls);
 
+  // 매 갱신 시 유닛 전용 요소 초기화 (비유닛 칸에선 숨김)
+  unitCircle.setAttribute('fill','none');unitCircle.setAttribute('stroke','none');
+  hpBarBg.setAttribute('fill','none');hpBarFill.setAttribute('fill','none');hpBarFill.setAttribute('width','0');
+  unitTxt.setAttribute('opacity','1');hpTxt.setAttribute('opacity','1');coord.setAttribute('opacity','1');
+  unitTxt.setAttribute('font-size','14');  // 지형/건축물 이모지 기본 크기
+
   if(cell.unit&&visible){
     const u=cell.unit,def=UNIT_DEFS[u.name];
+    const acted=u.movedThisTurn||u.attackedThisTurn;
+    const op=acted?'0.4':'1';
+    // 컬러 원 배경 (소유자 색상)
+    unitCircle.setAttribute('fill',u.owner==='p'?'#1a4a1a':'#4a1a1a');
+    unitCircle.setAttribute('stroke',u.owner==='p'?'#3a9a3a':'#e05050');
+    unitCircle.setAttribute('stroke-width','1.5');
+    unitCircle.setAttribute('opacity',op);
+    // 유닛 이모지 (원 중앙, 이모지 아이콘)
     unitTxt.textContent=def.emoji;
-    unitTxt.setAttribute('fill',u.owner==='p'?'#f0cc6e':'#e05050');
-    unitTxt.setAttribute('opacity',(u.movedThisTurn||u.attackedThisTurn)?'0.45':'1');
-    hpTxt.textContent=`${u.hp}HP`;
-    hpTxt.setAttribute('fill',u.hp/u.maxHp>0.5?'#888':'#e05050');
-    coord.textContent=reservations[key]?((reservations[key].type==='attack'||reservations[key].type==='moveAttack')?`⚔${reservations[key].attackQ},${reservations[key].attackR}`:`→${reservations[key].tq},${reservations[key].tr}`):cell.tower?`🗼${cell.tower.hp}`:cell.bridge?`🌉${cell.bridge.hp}`:`${q},${r}`;
+    unitTxt.setAttribute('fill','#fff');
+    unitTxt.setAttribute('font-size','11');
+    unitTxt.setAttribute('opacity',op);
+    // HP 바
+    const ratio=Math.max(0,u.hp/u.maxHp);
+    hpBarBg.setAttribute('fill','#2a2a2a');hpBarBg.setAttribute('opacity',op);
+    hpBarFill.setAttribute('width',String(Math.round(18*ratio)));
+    hpBarFill.setAttribute('fill',ratio>0.5?'#3a9a3a':ratio>0.25?'#c8a84b':'#e05050');
+    hpBarFill.setAttribute('opacity',op);
+    // HP 수치 (바 아래 소형 텍스트)
+    hpTxt.textContent=`${u.hp}`;
+    hpTxt.setAttribute('fill',ratio>0.5?'#7a9a7a':'#e05050');
+    hpTxt.setAttribute('opacity',op);
+    // 좌표/예약/건축물 정보 (최하단, 이모지 중첩 방지: 건축물은 텍스트로 표시)
+    coord.textContent=reservations[key]?((reservations[key].type==='attack'||reservations[key].type==='moveAttack')?`⚔${reservations[key].attackQ},${reservations[key].attackR}`:`→${reservations[key].tq},${reservations[key].tr}`):cell.tower?`탑${cell.tower.hp}`:cell.bridge?`교${cell.bridge.hp}`:`${q},${r}`;
     coord.setAttribute('fill',cell.tower?(cell.tower.owner==='p'?'#3a9a3a':'#e05050'):cell.bridge?'#c8a84b':reservations[key]?'#3a7a3a':'#444');
+    coord.setAttribute('opacity',op);
   } else if(cell.wall&&visible){
     unitTxt.textContent=cell.wall.owner==='p'?'🪵':'🧱';unitTxt.setAttribute('fill','#888');
     hpTxt.textContent=`HP${cell.wall.hp}`;hpTxt.setAttribute('fill','#666');
@@ -128,20 +195,44 @@ function refreshHex(q,r){
     unitTxt.textContent='🗼';unitTxt.setAttribute('fill',cell.tower.owner==='p'?'#3a9a3a':'#e05050');
     hpTxt.textContent=`HP${cell.tower.hp}`;hpTxt.setAttribute('fill',cell.tower.hp/cell.tower.maxHp>0.5?'#888':'#e05050');
     coord.textContent=`탐${cell.tower.sight}`;coord.setAttribute('fill',cell.tower.owner==='p'?'#3a9a3a':'#e05050');
-  } else if(cell.terrain==='river'){
-    unitTxt.textContent='🌊';unitTxt.setAttribute('fill','#5a8ab0');hpTxt.textContent='';
-    coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
-  } else if(cell.terrain==='mountain'){
-    unitTxt.textContent='⛰️';unitTxt.setAttribute('fill','#887');hpTxt.textContent='';
-    coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
   } else {
-    unitTxt.textContent='';hpTxt.textContent='';
-    coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
+    // 건설 예약/진행 중인 칸 우선 체크
+    const pending=visible?pendingBuildings.find(c=>c.tq===q&&c.tr===r):null;
+    if(pending){
+      const bEmoji=pending.type==='wall'?'🪵':pending.type==='bridge'?'🌉':'🗼';
+      const bColor=pending.owner==='p'?'#4a9a4a':'#c05050';
+      if(!pending.started){
+        // 공병 이동 중 — 건설 예약됨, 아직 미시작
+        unitTxt.textContent=bEmoji;unitTxt.setAttribute('fill','#555');unitTxt.setAttribute('font-size','14');
+        hpTxt.textContent='예약';hpTxt.setAttribute('fill','#555');
+        coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
+      } else {
+        // 건설 진행 중 — 진행바 + 남은 턴 표시
+        const totalTurns=pending.type==='wall'?1:pending.type==='bridge'?3:2;
+        const turnsLeft=Math.max(0,pending.completeTurn-turn);
+        const ratio=totalTurns>0?Math.min(1,(totalTurns-turnsLeft)/totalTurns):1;
+        unitTxt.textContent=bEmoji;unitTxt.setAttribute('fill',bColor);unitTxt.setAttribute('font-size','14');
+        hpBarBg.setAttribute('fill','#2a2a2a');
+        hpBarFill.setAttribute('fill','#c8a84b');
+        hpBarFill.setAttribute('width',String(Math.round(18*ratio)));
+        hpTxt.textContent=`${turnsLeft}턴`;hpTxt.setAttribute('fill','#c8a84b');
+        coord.textContent='건설중';coord.setAttribute('fill',bColor);
+      }
+    } else if(cell.terrain==='river'){
+      unitTxt.textContent='🌊';unitTxt.setAttribute('fill','#5a8ab0');hpTxt.textContent='';
+      coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
+    } else if(cell.terrain==='mountain'){
+      unitTxt.textContent='⛰️';unitTxt.setAttribute('fill','#887');hpTxt.textContent='';
+      coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
+    } else {
+      unitTxt.textContent='';hpTxt.textContent='';
+      coord.textContent=`${q},${r}`;coord.setAttribute('fill','#444');
+    }
   }
 }
 
 function refreshAll(){updateVision();for(let r=0;r<ROWS;r++)for(let q=0;q<COLS;q++)refreshHex(q,r);renderReservationLines();updateScoreBar();renderReserveList();}
-function clearHighlights(){highlighted.clear();attackTargets.clear();refreshAll();}
+function clearHighlights(){highlighted.clear();attackTargets.clear();healTargets.clear();refreshAll();}
 
 function updateVision(){
   visibleHexes.clear();
@@ -164,15 +255,21 @@ function renderReservationLines(){
   if(!reservationLineG)return;
   reservationLineG.innerHTML='';
   Object.entries(reservations).forEach(([key,res])=>{
+    if(res.owner==='e')return; // 적 예약 경로는 표시하지 않음
     const[sq,sr]=key.split(',').map(Number);
     if(res.type==='attack'){
       appendReservationLine([{q:sq,r:sr},{q:res.attackQ,r:res.attackR}],res,'attack');
+      appendReservationMarker(res.attackQ,res.attackR,'atk',res.owner);
+      appendReservationSrcRing(sq,sr,res.owner);
       return;
     }
-    const path=bfsPathHex(sq,sr,res.tq,res.tr,res.owner);
-    if(path&&path.length>0)appendReservationLine([{q:sq,r:sr},...path],res,'move');
+    // 안개 속 지형 노출 방지: BFS 우회 경로 대신 출발→목적지 직선으로만 표시
+    appendReservationLine([{q:sq,r:sr},{q:res.tq,r:res.tr}],res,'move');
+    appendReservationMarker(res.tq,res.tr,'move',res.owner);
+    appendReservationSrcRing(sq,sr,res.owner);
     if(res.type==='moveAttack'){
       appendReservationLine([{q:sq,r:sr},{q:res.attackQ,r:res.attackR}],res,'attack');
+      appendReservationMarker(res.attackQ,res.attackR,'atk',res.owner);
     }
   });
 }
@@ -185,6 +282,40 @@ function appendReservationLine(hexes,res,type){
   line.setAttribute('class',`reservation-line ${type} ${res.owner==='e'?'e':'p'}`);
   line.setAttribute('points',points);
   reservationLineG.appendChild(line);
+}
+
+function appendReservationMarker(q,r,type,owner){
+  const{x,y}=hexCenter(q,r);
+  const circle=document.createElementNS(NS,'circle');
+  circle.setAttribute('cx',x);circle.setAttribute('cy',y);
+  circle.setAttribute('r','9');
+  circle.setAttribute('class',type==='atk'?'res-dest-atk':`res-dest-move${owner==='e'?' e':''}`);
+  reservationLineG.appendChild(circle);
+}
+
+function appendReservationSrcRing(q,r,owner){
+  const{x,y}=hexCenter(q,r);
+  const ring=document.createElementNS(NS,'circle');
+  ring.setAttribute('cx',x);ring.setAttribute('cy',y-5); // 유닛 원 중심에 정렬
+  ring.setAttribute('r','13');
+  ring.setAttribute('class',`res-src-ring ${owner==='e'?'e':'p'}`);
+  reservationLineG.appendChild(ring);
+}
+
+function animateCombat(sq,sr,tq,tr){
+  if(!combatFxG)return Promise.resolve();
+  const a=hexCenter(sq,sr),b=hexCenter(tq,tr);
+  const line=document.createElementNS(NS,'line');
+  line.setAttribute('class','combat-line');
+  line.setAttribute('x1',a.x);line.setAttribute('y1',a.y);
+  line.setAttribute('x2',b.x);line.setAttribute('y2',b.y);
+  const impact=document.createElementNS(NS,'circle');
+  impact.setAttribute('class','combat-impact');
+  impact.setAttribute('cx',b.x);impact.setAttribute('cy',b.y);impact.setAttribute('r','2');
+  combatFxG.appendChild(line);combatFxG.appendChild(impact);
+  return new Promise(resolve=>setTimeout(()=>{
+    line.remove();impact.remove();resolve();
+  },390));
 }
 
 // ══════════════════════════════════════════════

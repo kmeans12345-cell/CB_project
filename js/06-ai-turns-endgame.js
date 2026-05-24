@@ -1,6 +1,6 @@
 ﻿//  AI BATTLE TURN
 // ══════════════════════════════════════════════
-function aiTurn(){
+async function aiTurn(){
   let aiT=BASE_TOKENS;
   let spent=0;
 
@@ -10,28 +10,48 @@ function aiTurn(){
 
   const snap=[];
   grid.forEach((c,i)=>{if(c.unit&&c.unit.owner==='e')snap.push({q:i%COLS,r:Math.floor(i/COLS),idx:i});});
-  snap.forEach(({q,r,idx})=>{
-    const unit=grid[idx].unit;if(!unit||unit.waitTurns>0)return;
+  for(const {q,r,idx} of snap){
+    const unit=grid[idx].unit;if(!unit||unit.waitTurns>0)continue;
+    if(unit.name==='공병'&&pendingBuildings.some(c=>c.started&&c.eq===q&&c.er===r))continue; // 건설 중 이동 불가
+    // 힐러: 공격 대신 HP가 가장 낮은 아군 회복
+    if(unit.name==='힐러'){
+      if(!unit.attackedThisTurn){
+        const healTarget=aiFindHealTarget(q,r,unit);
+        if(healTarget){
+          const t=grid[ri(healTarget.q,healTarget.r)].unit;
+          const restored=Math.min(HEAL_AMOUNT,t.maxHp-t.hp);
+          t.hp+=restored;
+          unit.attackedThisTurn=true;
+          log(`⚕️ AI 힐러→${t.name}: +${restored}HP 회복`,'enemy');
+        }
+      }
+      if(aiT>0&&!unit.movedThisTurn&&unit.move>0){
+        const used=aiMoveUnitToward(q,r,unit,aiT);
+        aiT-=used;spent+=used;
+      }
+      continue;
+    }
     if(!unit.attackedThisTurn&&unit.range>0){
       const target=aiFindAttackTarget(q,r,unit);
       if(target){
         const targetCell=grid[ri(target.q,target.r)];
         if(target.type==='tower'){
-          aiAttackTower(unit,targetCell,q,r,target.q,target.r);
+          await aiAttackTower(unit,targetCell,q,r,target.q,target.r);
         } else {
           const t=targetCell.unit;
+          await animateCombat(q,r,target.q,target.r);
           resolveCombat(unit,t,q,r,target.q,target.r);unit.attackedThisTurn=true;
           if(t.hp<=0)targetCell.unit=null;
           if(unit.hp<=0){grid[idx].unit=null;}
         }
       }
-      if(unit.hp<=0)return;
+      if(unit.hp<=0)continue;
     }
     if(aiT>0&&!unit.movedThisTurn&&unit.move>0){
       const used=aiMoveUnitToward(q,r,unit,aiT);
       aiT-=used;spent+=used;
     }
-  });
+  }
 
   while(aiT>0&&aiDeployOne(aiT)){
     const last=aiLastDeployCost;aiT-=last;spent+=last;
@@ -89,7 +109,28 @@ function aiFindAttackTarget(q,r,unit){
   return targets[0]||null;
 }
 
-function aiAttackTower(unit,cell,sq,sr,tq,tr){
+function aiFindHealTarget(q,r,healer){
+  const vis=new Set([`${q},${r}`]),front=[{q,r,d:0}],targets=[];
+  while(front.length>0){
+    const cur=front.shift();if(cur.d>=healer.range)continue;
+    hexNeighbours(cur.q,cur.r).forEach(nb=>{
+      const key=`${nb.q},${nb.r}`;if(vis.has(key)||!inBounds(nb.q,nb.r))return;vis.add(key);
+      front.push({q:nb.q,r:nb.r,d:cur.d+1});
+      const t=grid[ri(nb.q,nb.r)].unit;
+      if(t&&t.owner==='e'&&t.hp<t.maxHp)targets.push({q:nb.q,r:nb.r,unit:t});
+    });
+  }
+  // HP 비율이 가장 낮은 아군 우선 (킹 최우선)
+  targets.sort((a,b)=>{
+    const aKing=a.unit.name==='킹',bKing=b.unit.name==='킹';
+    if(aKing!==bKing)return aKing?-1:1;
+    return (a.unit.hp/a.unit.maxHp)-(b.unit.hp/b.unit.maxHp);
+  });
+  return targets[0]||null;
+}
+
+async function aiAttackTower(unit,cell,sq,sr,tq,tr){
+  await animateCombat(sq,sr,tq,tr);
   const dmg=unit.name==='트레뷰셋'?unit.atk*2:unit.atk;
   cell.tower.hp-=dmg;unit.attackedThisTurn=true;
   log(`${UNIT_DEFS[unit.name].emoji}${unit.name}→🗼 아군 감시탑: ${dmg}피해`,'enemy');
@@ -123,7 +164,7 @@ function aiMoveUnitToward(q,r,unit,aiT){
 async function endTurn(){
   if(phase!=='battle')return;
   cancelSelection();
-  aiTurn();
+  await aiTurn();
   await executeReservations();
   await processAutoBuildings();
   const saved=Math.min(tokens,PIGGY_MAX-piggy);
